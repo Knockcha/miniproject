@@ -3,6 +3,7 @@ from flask import Flask
 from .config import Config
 from .db import init_db
 from .routes import main_blueprint
+from .api import api_blueprint
 
 
 def create_app() -> Flask:
@@ -11,8 +12,6 @@ def create_app() -> Flask:
 
     init_db(app)
     app.register_blueprint(main_blueprint)
+    app.register_blueprint(api_blueprint)
 
     return app
-
-
-app = create_app()

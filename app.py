@@ -1,5 +1,8 @@
-from app import create_app
+from dotenv import load_dotenv
 
+load_dotenv()  # .env를 Config import 전에 로드해야 환경변수가 반영됨
+
+from app import create_app
 
 app = create_app()
 

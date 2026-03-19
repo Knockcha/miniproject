@@ -14,3 +14,16 @@ class Config:
     SQLALCHEMY_DATABASE_URI = (
         f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
     )
+
+    # ── 외부 딥러닝 피부 분석 API (팀원 모델) ──
+    SKIN_API_URL = os.getenv("SKIN_API_URL", "")
+    SKIN_API_KEY = os.getenv("SKIN_API_KEY", "")
+    SKIN_API_TIMEOUT = int(os.getenv("SKIN_API_TIMEOUT", "30"))
+
+    # ── 네이버 쇼핑 API (실제 제품 추천) ──
+    NAVER_CLIENT_ID = os.getenv("NAVER_CLIENT_ID", "")
+    NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET", "")
+
+    # ── 업로드 설정 ──
+    MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16 MB
+    ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp"}
