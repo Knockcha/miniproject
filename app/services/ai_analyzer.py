@@ -149,8 +149,7 @@ def _gemini_color_analysis(image_bytes, skin_result):
         return ai_result.get("color_result"), ai_result.get("ai_advice")
 
     except Exception as e:
-        # [개선] Gemini 실패 시 로그만 남기고 None 리턴 → 로컬 분석으로 폴백
-        print(f"[AI] Gemini 컬러 분석 실패 (로컬 분석으로 폴백): {e}")
+        # [개선] Gemini 실패 시 None 리턴 → 로컬 분석으로 폴백
         return None, None
 
 
