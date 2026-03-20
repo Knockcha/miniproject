@@ -17,7 +17,7 @@ def login():
         mbr_name, mbr_pwd = request.form.get("username"), request.form.get("password")
         engine = current_app.extensions["db_engine"]
         with engine.begin() as conn:
-            user = conn.execute(text("SELECT mbr_id, mbr_name, mbr_pwd, mbr_email FROM tb_cs_members WHERE mbr_name = :name"), {"name": mbr_name}).fetchone()
+            user = conn.execute(text("SELECT mbr_id, mbr_name, mbr_pwd, mbr_email FROM tb_cs_member WHERE mbr_name = :name"), {"name": mbr_name}).fetchone()
             if user and check_password_hash(user[2], mbr_pwd):
                 session.update({"user_id": user[0], "username": user[1], "user_email": user[3]})
                 return redirect(url_for("main.index"))
@@ -54,12 +54,12 @@ def naver_callback():
     
     engine = current_app.extensions["db_engine"]
     with engine.begin() as conn:
-        user = conn.execute(text("SELECT mbr_id, mbr_name, mbr_email FROM tb_cs_members WHERE mbr_email = :email"), {"email": email}).fetchone()
+        user = conn.execute(text("SELECT mbr_id, mbr_name, mbr_email FROM tb_cs_member WHERE mbr_email = :email"), {"email": email}).fetchone()
         if not user:
             temp_name = f"naver_{profile.get('id')[:8]}"
-            conn.execute(text("INSERT INTO tb_cs_members (mbr_name, mbr_pwd, mbr_email, mbr_status) VALUES (:name, :pwd, :email, 'active')"),
+            conn.execute(text("INSERT INTO tb_cs_member (mbr_name, mbr_pwd, mbr_email, mbr_status) VALUES (:name, :pwd, :email, 'active')"),
                          {"name": temp_name, "pwd": "SOCIAL_LOGIN_NAVER", "email": email})
-            user = conn.execute(text("SELECT mbr_id, mbr_name, mbr_email FROM tb_cs_members WHERE mbr_email = :email"), {"email": email}).fetchone()
+            user = conn.execute(text("SELECT mbr_id, mbr_name, mbr_email FROM tb_cs_member WHERE mbr_email = :email"), {"email": email}).fetchone()
         session.update({"user_id": user[0], "username": user[1], "user_email": user[2]})
     return redirect(url_for("main.index"))
 
