@@ -8,9 +8,9 @@ POST /api/diagnosis
 [개선] ai_analyzer 통합 모듈을 통해 분석 호출하도록 변경
 """
 
-import uuid
+import json
 
-from flask import current_app, request
+from flask import current_app, request, session
 from sqlalchemy import text
 
 from . import api_blueprint
@@ -68,34 +68,96 @@ def run_diagnosis():
             result.get("conditions", {})
         )
 
-    # ── 4. 진단 결과 DB 저장 ──
-    session_id = str(uuid.uuid4())
-    try:
-        engine = current_app.extensions.get("db_engine")
-        if engine:
-            with engine.connect() as conn:
-                conn.execute(
-                    text(
-                        "INSERT INTO diagnosis_results "
-                        "(session_id, personal_color_season, skin_type, "
-                        " overall_score, analysis_method) "
-                        "VALUES (:sid, :season, :skin_type, :score, :method)"
-                    ),
-                    {
-                        "sid": session_id,
-                        "season": color_result.get("season_key", ""),
-                        "skin_type": result.get("skin_type", {}).get("name", ""),
-                        "score": result.get("overall_score", 0),
-                        "method": result.get("analysis_method", "unknown"),
-                    },
-                )
-                conn.commit()
-    except Exception:
-        pass
+    # ── 4. 진단 결과 DB 저장 (tb_sk_diagnosis) ──
+    # [개선] 기존 diagnosis_results 테이블 → tb_sk_diagnosis로 변경
+    # - 로그인한 사용자만 저장 → 마이페이지에서 이전 진단 기록 조회용
+    # - 퍼스널컬러(시즌/톤/명도/채도) + 피부 분석(6개 점수) 상세 저장
+    mbr_id = session.get("user_id")
+    dgns_id = None
+    if mbr_id:
+        try:
+            engine = current_app.extensions.get("db_engine")
+            if engine:
+                # 퍼스널컬러 reasoning에서 언더톤/명도/채도 추출
+                reasoning = color_result.get("reasoning", [])
+                tone_info = next((r for r in reasoning if r.get("factor") == "언더톤"), {})
+                bright_info = next((r for r in reasoning if r.get("factor") == "명도"), {})
+                chrome_info = next((r for r in reasoning if r.get("factor") == "채도"), {})
+
+                # 피부 분석 conditions
+                conditions = result.get("conditions", {})
+
+                with engine.connect() as conn:
+                    row = conn.execute(
+                        text(
+                            "INSERT INTO tb_sk_diagnosis "
+                            "(mbr_id, color, color_note, color_rmk, "
+                            " tone, tone_rmk, bright, bright_rmk, "
+                            " chrome, chrome_rmk, "
+                            " type, type_score, type_rmk, "
+                            " bright_score, bright_score_rmk, "
+                            " equality_score, equality_score_rmk, "
+                            " trouble_score, trouble_score_rmk, "
+                            " texture_score, texture_score_rmk, "
+                            " moisture_score, moisture_score_rmk, "
+                            " balance_score, balance_score_rmk, "
+                            " match_color, unmatch_color) "
+                            "VALUES "
+                            "(:mbr_id, :color, :color_note, :color_rmk, "
+                            " :tone, :tone_rmk, :bright, :bright_rmk, "
+                            " :chrome, :chrome_rmk, "
+                            " :type, :type_score, :type_rmk, "
+                            " :bright_score, :bright_score_rmk, "
+                            " :equality_score, :equality_score_rmk, "
+                            " :trouble_score, :trouble_score_rmk, "
+                            " :texture_score, :texture_score_rmk, "
+                            " :moisture_score, :moisture_score_rmk, "
+                            " :balance_score, :balance_score_rmk, "
+                            " :match_color, :unmatch_color) "
+                            "RETURNING dgns_id"
+                        ),
+                        {
+                            "mbr_id": mbr_id,
+                            # 퍼스널컬러
+                            "color": color_result.get("season", ""),
+                            "color_note": color_result.get("subtitle", ""),
+                            "color_rmk": color_result.get("description", ""),
+                            "tone": tone_info.get("value", ""),
+                            "tone_rmk": tone_info.get("detail", ""),
+                            "bright": bright_info.get("value", ""),
+                            "bright_rmk": bright_info.get("detail", ""),
+                            "chrome": chrome_info.get("value", ""),
+                            "chrome_rmk": chrome_info.get("detail", ""),
+                            # 피부 타입
+                            "type": result.get("skin_type", {}).get("name", ""),
+                            "type_score": result.get("overall_score", 0),
+                            "type_rmk": result.get("skin_type", {}).get("description", ""),
+                            # 6개 세부 점수
+                            "bright_score": conditions.get("brightness", {}).get("score", 0),
+                            "bright_score_rmk": conditions.get("brightness", {}).get("detail", ""),
+                            "equality_score": conditions.get("evenness", {}).get("score", 0),
+                            "equality_score_rmk": conditions.get("evenness", {}).get("detail", ""),
+                            "trouble_score": conditions.get("redness", {}).get("score", 0),
+                            "trouble_score_rmk": conditions.get("redness", {}).get("detail", ""),
+                            "texture_score": conditions.get("texture", {}).get("score", 0),
+                            "texture_score_rmk": conditions.get("texture", {}).get("detail", ""),
+                            "moisture_score": conditions.get("moisture", {}).get("score", 0),
+                            "moisture_score_rmk": conditions.get("moisture", {}).get("detail", ""),
+                            "balance_score": conditions.get("oiliness", {}).get("score", 0),
+                            "balance_score_rmk": conditions.get("oiliness", {}).get("detail", ""),
+                            # 어울리는/안어울리는 색상
+                            "match_color": json.dumps(color_result.get("best_colors", []), ensure_ascii=False),
+                            "unmatch_color": json.dumps(color_result.get("worst_colors", []), ensure_ascii=False),
+                        },
+                    )
+                    dgns_id = row.scalar()
+                    conn.commit()
+        except Exception:
+            pass
 
     return {
         "success": True,
-        "session_id": session_id,
+        "dgns_id": dgns_id,
         "personal_color": color_result,
         "skin_analysis": {
             "success": True,
