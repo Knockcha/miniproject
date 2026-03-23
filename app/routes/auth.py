@@ -17,9 +17,9 @@ def login():
         mbr_name, mbr_pwd = request.form.get("username"), request.form.get("password")
         engine = current_app.extensions["db_engine"]
         with engine.begin() as conn:
-            user = conn.execute(text("SELECT mbr_id, mbr_name, mbr_pwd, mbr_email FROM tb_cs_member WHERE mbr_name = :name"), {"name": mbr_name}).fetchone()
+            user = conn.execute(text("SELECT mbr_id, mbr_name, mbr_pwd, mbr_email, mbr_photo FROM tb_cs_member WHERE mbr_name = :name"), {"name": mbr_name}).fetchone()
             if user and check_password_hash(user[2], mbr_pwd):
-                session.update({"user_id": user[0], "username": user[1], "user_email": user[3]})
+                session.update({"user_id": user[0], "username": user[1], "user_email": user[3], "user_photo": user[4] or ""})
                 return redirect(url_for("main.index"))
             flash("아이디 또는 비밀번호가 틀렸습니다.", "error")
     return render_template("login.html")

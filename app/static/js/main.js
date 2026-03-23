@@ -207,6 +207,7 @@ document.addEventListener("DOMContentLoaded", () => {
       await new Promise((r) => setTimeout(r, 500));
       renderResults(data);
       showSection($result);
+      document.dispatchEvent(new Event("result-shown"));
     } catch (err) {
       clearInterval(stepTimer);
       console.error(err);
@@ -366,42 +367,53 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // ============================================================
-  // 제미나이 AI 챗봇 로직
+  // 제미나이 AI 챗봇 로직 (인라인 카드 + 슬라이드 패널 공용)
   // ============================================================
+  // ============================================================
+  // AI 챗봇 — FAB + 위로 펼쳐지는 팝업
+  // ============================================================
+  const $chatWidget  = document.getElementById("chat-widget");
+  const $chatPopup   = document.getElementById("chat-modal");
   const $btnOpenChat = document.getElementById("btn-open-chat");
-  const $chatModal   = document.getElementById("chat-modal");
   const $chatClose   = document.getElementById("chat-close");
-  const $chatOverlay = document.getElementById("chat-overlay");
   const $chatMessages = document.getElementById("chat-messages");
   const $chatInput   = document.getElementById("chat-input");
   const $btnSendChat = document.getElementById("btn-send-chat");
 
   let chatHistory = [];
+  let chatGreeted = false;
 
-  function openChatModal() {
-    $chatModal.classList.remove("hidden");
-    if ($chatMessages.children.length === 0) {
-        appendChatMessage("ai", "반갑습니다! 당신의 뷰티 고민을 해결해드릴 AI 컨설턴트 벨라입니다. 피부 타입이나 스킨케어, 어울리는 스타일까지 무엇이든 편하게 물어보세요! ✨");
+  // 결과 표시 시 FAB 등장
+  document.addEventListener("result-shown", () => {
+    $chatWidget?.classList.remove("hidden");
+  });
+
+  function openChatPopup() {
+    $chatPopup.classList.remove("hidden");
+    if (!chatGreeted) {
+      chatGreeted = true;
+      appendChatMessage("ai", "반갑습니다! AI 컨설턴트 벨라입니다. 진단 결과에 대해 궁금한 점을 물어보세요! ✨");
     }
+    setTimeout(() => $chatInput?.focus(), 300);
   }
-  function closeChatModal() {
-    $chatModal.classList.add("hidden");
+  function closeChatPopup() {
+    $chatPopup.classList.add("hidden");
   }
 
-  $btnOpenChat?.addEventListener("click", openChatModal);
-  $chatClose?.addEventListener("click", closeChatModal);
-  $chatOverlay?.addEventListener("click", closeChatModal);
+  $btnOpenChat?.addEventListener("click", () => {
+    $chatPopup.classList.contains("hidden") ? openChatPopup() : closeChatPopup();
+  });
+  $chatClose?.addEventListener("click", closeChatPopup);
 
   function appendChatMessage(type, text, recommendations = []) {
+    if (!$chatMessages) return;
     const msgDiv = document.createElement("div");
     msgDiv.className = `chat-msg chat-${type}`;
-    
-    let content = type === 'ai' ? 
-        `<strong>벨라 💄</strong><p>${text.replace(/\n/g, '<br>')}</p>` : 
-        `<strong>나</strong><p>${text.replace(/\n/g, '<br>')}</p>`;
-    
-    // 추천 상품이 있으면 추가
-    if (type === 'ai' && recommendations && recommendations.length > 0) {
+    let content = type === 'ai'
+      ? `<strong>벨라 💄</strong><p>${text.replace(/\n/g, '<br>')}</p>`
+      : `<strong>나</strong><p>${text.replace(/\n/g, '<br>')}</p>`;
+
+    if (type === 'ai' && recommendations?.length > 0) {
       content += `
         <div class="chat-recs">
           <div class="chat-recs-title">✨ 벨라의 실시간 추천</div>
@@ -413,13 +425,10 @@ document.addEventListener("DOMContentLoaded", () => {
                   <div class="chat-prod-title">${p.title}</div>
                   <div class="chat-prod-price">₩${Number(p.price).toLocaleString()}</div>
                 </div>
-              </a>
-            `).join('')}
+              </a>`).join('')}
           </div>
-        </div>
-      `;
+        </div>`;
     }
-    
     msgDiv.innerHTML = content;
     $chatMessages.appendChild(msgDiv);
     $chatMessages.scrollTop = $chatMessages.scrollHeight;
@@ -428,28 +437,18 @@ document.addEventListener("DOMContentLoaded", () => {
   async function sendChatMessage() {
     const message = $chatInput.value.trim();
     if (!message) return;
-
     $chatInput.value = "";
     appendChatMessage("user", message);
     $btnSendChat.disabled = true;
 
-    // 현재 진단 정보 가져오기
     const colorSeason = document.getElementById("color-season")?.textContent || "모름";
     const skinType = document.getElementById("skin-type-name")?.textContent || "모름";
     const skinScore = document.getElementById("score-number")?.textContent || "0";
     const contextText = `사용자의 진단 결과 - 퍼스널컬러: ${colorSeason}, 피부타입: ${skinType} (${skinScore}점)`;
 
-    // 로딩 인디케이터 추가
     const $loadingMsg = document.createElement("div");
     $loadingMsg.className = "chat-msg chat-ai";
-    $loadingMsg.id = "chat-loading-indicator";
-    $loadingMsg.innerHTML = `
-        <strong>벨라 💄</strong>
-        <div class="typing-indicator">
-            <span></span><span></span><span></span>
-            <small style="margin-left: 8px; color: var(--text-muted); font-size: 0.8rem;">벨라가 답변을 생각하고 있어요...</small>
-        </div>
-    `;
+    $loadingMsg.innerHTML = `<strong>벨라 💄</strong><div class="typing-indicator"><span></span><span></span><span></span></div>`;
     $chatMessages.appendChild($loadingMsg);
     $chatMessages.scrollTop = $chatMessages.scrollHeight;
 
@@ -457,27 +456,19 @@ document.addEventListener("DOMContentLoaded", () => {
       const resp = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: message,
-          context: contextText,
-          history: chatHistory
-        })
+        body: JSON.stringify({ message, context: contextText, history: chatHistory })
       });
       const data = await resp.json();
-
-      // 로딩 제거
-      document.getElementById("chat-loading-indicator")?.remove();
-
+      $loadingMsg.remove();
       if (data.success) {
         appendChatMessage("ai", data.response, data.recommended_products);
         chatHistory.push({ role: "user", text: message });
         chatHistory.push({ role: "model", text: data.response });
       } else {
-        appendChatMessage("ai", `오류가 발생했습니다: ${data.error}`);
+        appendChatMessage("ai", `오류: ${data.error}`);
       }
     } catch (err) {
-      console.error(err);
-      document.getElementById("chat-loading-indicator")?.remove();
+      $loadingMsg.remove();
       appendChatMessage("ai", "서버 연결에 실패했습니다.");
     } finally {
       $btnSendChat.disabled = false;
@@ -486,7 +477,5 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   $btnSendChat?.addEventListener("click", sendChatMessage);
-  $chatInput?.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") sendChatMessage();
-  });
+  $chatInput?.addEventListener("keydown", (e) => { if (e.key === "Enter") sendChatMessage(); });
 });
